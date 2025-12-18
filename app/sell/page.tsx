@@ -6,12 +6,14 @@ import { Button } from "@/components/ui/button"
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Upload } from 'lucide-react'
+import { usePopup } from '@/components/ui/popup'
 
 export default function SellPage() {
   const [loading, setLoading] = useState(false)
   const [file, setFile] = useState<File | null>(null)
   const router = useRouter()
   const supabase = createClient()
+  const { show } = usePopup()
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -24,23 +26,24 @@ export default function SellPage() {
     setLoading(true)
 
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
-        alert("Please log in to list an item.")
-        router.push('/login')
-        return
-      }
-
-      const formData = new FormData(e.currentTarget)
+      const form = e.currentTarget as HTMLFormElement
+      const formData = new FormData(form)
       const title = formData.get('title') as string
       const price = formData.get('price') as string
       const description = formData.get('description') as string
       const location = formData.get('location') as string
+      const category = formData.get('category') as string
       const isNegotiable = formData.get('negotiable') === 'on'
       const priceValue = Number(price)
-      if (!title?.trim() || Number.isNaN(priceValue) || priceValue <= 0 || !description?.trim() || !location?.trim()) {
-        alert("Please fill all fields with valid values.")
+      if (!title?.trim() || Number.isNaN(priceValue) || priceValue <= 0 || !description?.trim() || !location?.trim() || !category?.trim()) {
+        show({ message: "Please fill all fields with valid values." })
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session) {
+        show({ message: "Please log in to list an item.", onConfirm: () => router.push('/login') })
         return
       }
 
@@ -70,7 +73,10 @@ export default function SellPage() {
 
         const { error: uploadError } = await supabase.storage
           .from('product-images')
-          .upload(filePath, file)
+          .upload(filePath, file, {
+            contentType: file.type || 'image/*',
+            upsert: true,
+          })
 
         if (uploadError) {
           throw uploadError
@@ -91,6 +97,7 @@ export default function SellPage() {
           price: priceValue,
           description,
           location,
+          category,
           is_negotiable: isNegotiable,
           images: imageUrl ? [imageUrl] : [],
           status: 'active'
@@ -98,15 +105,14 @@ export default function SellPage() {
 
       if (insertError) throw insertError
 
-      alert("Item listed successfully!")
-      router.push('/')
+      show({ message: "Item listed successfully!", onConfirm: () => router.push('/') })
       
     } catch (error: any) {
       const msg = typeof error?.message === 'string' ? error.message : 'Failed to list item.'
       if (msg.toLowerCase().includes('storage bucket') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('does not exist')) {
-        alert("Image upload failed. Please create a 'product-images' storage bucket in Supabase and try again.")
+        show({ message: "Image upload failed. Please create a 'product-images' storage bucket in Supabase and try again." })
       } else {
-        alert(msg)
+        show({ message: msg })
       }
     } finally {
       setLoading(false)
@@ -130,6 +136,16 @@ export default function SellPage() {
           <div className="space-y-2">
             <label className="text-sm font-medium text-gray-700">Price ($)</label>
             <input name="price" required type="number" min="0" step="0.01" placeholder="0.00" className="w-full h-12 px-4 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-pastel-primary)]" />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">Category</label>
+            <select name="category" required className="w-full h-12 px-4 rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-[var(--color-pastel-primary)]">
+              <option value="">Select a category</option>
+              <option value="Electronics">Electronics</option>
+              <option value="Fashion">Fashion</option>
+              <option value="Home & Living">Home & Living</option>
+            </select>
           </div>
 
           <div className="flex items-center space-x-2">

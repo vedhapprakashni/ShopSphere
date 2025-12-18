@@ -125,3 +125,28 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+alter table profiles add column if not exists mode text default 'buyer';
+alter table products add column if not exists sold_at timestamp with time zone;
+create policy "Users can delete their own products." on products for delete using ( auth.uid() = seller_id );
+
+create table if not exists recent_views (
+  user_id uuid references profiles(id) not null,
+  product_id uuid references products(id) not null,
+  viewed_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  primary key (user_id, product_id)
+);
+alter table recent_views enable row level security;
+create policy "Users can select their own views." on recent_views for select using ( auth.uid() = user_id );
+create policy "Users can insert their own views." on recent_views for insert with check ( auth.uid() = user_id );
+create policy "Users can update their own views." on recent_views for update using ( auth.uid() = user_id );
+
+create or replace function public.cleanup_sold_products()
+returns void
+language sql
+as $$
+  delete from public.products
+  where status = 'sold'
+    and sold_at is not null
+    and sold_at < timezone('utc'::text, now()) - interval '1 month';
+$$;

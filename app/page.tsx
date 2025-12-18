@@ -5,12 +5,24 @@ import { createClient } from "@/lib/supabase/server"
 
 export default async function Home() {
   const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
   
   const { data: products } = await supabase
     .from('products')
     .select('*')
     .eq('status', 'active')
     .order('created_at', { ascending: false })
+
+  let recent: any[] = []
+  if (user) {
+    const { data: views } = await supabase
+      .from('recent_views')
+      .select('viewed_at, products(*)')
+      .eq('user_id', user.id)
+      .order('viewed_at', { ascending: false })
+      .limit(8)
+    recent = views || []
+  }
 
   return (
     <main className="min-h-screen bg-[var(--color-pastel-bg)]">
@@ -97,6 +109,42 @@ export default async function Home() {
             </div>
         )}
       </section>
+
+      {user && recent.length > 0 && (
+        <section className="container mx-auto px-4 py-12">
+          <h2 className="text-2xl font-bold mb-8 text-[var(--color-pastel-text)]">Recently Viewed</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+            {recent.map((rv: any, idx: number) => (
+              <Link href={`/product/${rv.products.id}`} key={`${rv.products.id}-${idx}`}>
+                <div className="bg-white rounded-xl overflow-hidden border border-[var(--color-pastel-border)] hover:shadow-lg transition-all group cursor-pointer h-full flex flex-col">
+                  <div className="h-48 bg-gray-100 relative overflow-hidden">
+                    {rv.products.images && rv.products.images[0] ? (
+                      <img 
+                        src={rv.products.images[0]} 
+                        alt={rv.products.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-50">
+                        No Image
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 space-y-2 flex-1 flex flex-col">
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-medium text-lg line-clamp-1">{rv.products.title}</h3>
+                      <span className="font-bold text-[var(--color-pastel-primary)]">${rv.products.price}</span>
+                    </div>
+                    <div className="pt-2 text-xs text-gray-400 flex items-center gap-1">
+                      <span>Viewed</span>
+                    </div>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   )
 }

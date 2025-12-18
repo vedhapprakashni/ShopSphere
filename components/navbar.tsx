@@ -71,6 +71,9 @@ export function Navbar() {
                <div className="w-8 h-8 rounded-full bg-[var(--color-pastel-primary)]/20 flex items-center justify-center text-[var(--color-pastel-primary)] font-bold">
                   {user.email?.[0].toUpperCase()}
                </div>
+               <Button variant="ghost" size="sm" asChild>
+                 <Link href="/account">Account</Link>
+               </Button>
                <Button variant="ghost" size="sm" onClick={handleSignOut} className="text-gray-500 hover:text-red-500">
                   <LogOut className="h-4 w-4 mr-2" />
                   Sign Out

@@ -4,24 +4,27 @@ import { createClient } from "@/lib/supabase/client"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import { MessageCircle, MapPin } from "lucide-react"
-import { notFound, useRouter } from "next/navigation"
+import { notFound, useRouter, useParams } from "next/navigation"
 import { useEffect, useState } from "react"
+import { usePopup } from "@/components/ui/popup"
 
-export default function ProductPage({ params }: { params: { id: string } }) {
+export default function ProductPage() {
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [negotiating, setNegotiating] = useState(false)
+  const [ownerActionsLoading, setOwnerActionsLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
-  const { id } = params // Next.js 15+ unwraps params automatically in async server components, but this is a client component now
+  const routeParams = useParams<{ id: string }>()
+  const id = routeParams?.id as string
+  const { show } = usePopup()
 
   useEffect(() => {
     async function fetchProduct() {
-      // Since params is a Promise in newer Next.js versions for Server Components,
-      // but in Client Components we access it directly or via props.
-      // However, to be safe with the latest types, we can treat it as an object if passed directly.
-      // Let's just use the id directly.
-      
+      if (!id) {
+        setLoading(false)
+        return
+      }
       const { data, error } = await supabase
         .from('products')
         .select('*, profiles(full_name, avatar_url)')
@@ -34,6 +37,16 @@ export default function ProductPage({ params }: { params: { id: string } }) {
         setProduct(data)
       }
       setLoading(false)
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        await supabase
+          .from('recent_views')
+          .upsert(
+            { user_id: session.user.id, product_id: id, viewed_at: new Date().toISOString() },
+            { onConflict: 'user_id,product_id' }
+          )
+      }
     }
     fetchProduct()
   }, [id, supabase])
@@ -48,7 +61,7 @@ export default function ProductPage({ params }: { params: { id: string } }) {
     }
 
     if (session.user.id === product.seller_id) {
-        alert("You cannot negotiate on your own product!")
+        show({ message: "You cannot negotiate on your own product!" })
         setNegotiating(false)
         return
     }
@@ -86,10 +99,51 @@ export default function ProductPage({ params }: { params: { id: string } }) {
 
     } catch (error) {
         console.error(error)
-        alert("Failed to start negotiation")
+        show({ message: "Failed to start negotiation" })
     } finally {
         setNegotiating(false)
     }
+  }
+
+  const handleMarkSold = async () => {
+    if (!product) return
+    setOwnerActionsLoading(true)
+    try {
+      const { error } = await supabase
+        .from('products')
+        .update({ status: 'sold', sold_at: new Date().toISOString() })
+        .eq('id', product.id)
+      if (error) throw error
+      show({ message: 'Marked as sold.', onConfirm: () => router.push('/') })
+    } catch (e) {
+      show({ message: 'Failed to mark as sold.' })
+    } finally {
+      setOwnerActionsLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!product) return
+    show({
+      message: 'Delete this item permanently?',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        setOwnerActionsLoading(true)
+        try {
+          const { error } = await supabase
+            .from('products')
+            .delete()
+            .eq('id', product.id)
+          if (error) throw error
+          show({ message: 'Item deleted.', onConfirm: () => router.push('/') })
+        } catch (e) {
+          show({ message: 'Failed to delete item.' })
+        } finally {
+          setOwnerActionsLoading(false)
+        }
+      },
+    })
   }
 
   if (loading) return <div className="min-h-screen bg-[var(--color-pastel-bg)] flex items-center justify-center">Loading...</div>
@@ -169,11 +223,33 @@ export default function ProductPage({ params }: { params: { id: string } }) {
                         {negotiating ? 'Starting...' : 'Chat / Offer'}
                     </Button>
                 </div>
+                {product && product.seller_id && (
+                  <OwnerActions productSellerId={product.seller_id} loading={ownerActionsLoading} onMarkSold={handleMarkSold} onDelete={handleDelete} />
+                )}
             </div>
           </div>
 
         </div>
       </div>
     </main>
+  )
+}
+
+function OwnerActions({ productSellerId, loading, onMarkSold, onDelete }: { productSellerId: string, loading: boolean, onMarkSold: () => void, onDelete: () => void }) {
+  const supabase = createClient()
+  const [isOwner, setIsOwner] = useState(false)
+  useEffect(() => {
+    const check = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setIsOwner(!!session && session.user.id === productSellerId)
+    }
+    check()
+  }, [productSellerId])
+  if (!isOwner) return null
+  return (
+    <div className="mt-6 flex gap-3">
+      <Button variant="pastelAccent" disabled={loading} onClick={onMarkSold}>Mark as Sold</Button>
+      <Button variant="destructive" disabled={loading} onClick={onDelete}>Delete</Button>
+    </div>
   )
 }

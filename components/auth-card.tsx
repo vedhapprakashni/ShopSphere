@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { usePopup } from "@/components/ui/popup"
 
 interface AuthCardProps {
   mode: 'login' | 'signup'
@@ -17,6 +18,7 @@ export function AuthCard({ mode }: AuthCardProps) {
   const [password, setPassword] = useState('')
   const supabase = createClient()
   const router = useRouter()
+  const { show } = usePopup()
 
   const handleGoogleLogin = async () => {
     setLoading(true)
@@ -28,7 +30,7 @@ export function AuthCard({ mode }: AuthCardProps) {
     })
     if (error) {
         console.error("Google Login Error:", error)
-        alert("Error logging in with Google: " + error.message)
+        show({ message: "Error logging in with Google: " + error.message })
         setLoading(false)
     }
   }
@@ -54,7 +56,7 @@ export function AuthCard({ mode }: AuthCardProps) {
                 router.push('/')
                 router.refresh()
             } else {
-                alert("Sign up successful! Please check your email to confirm your account.")
+                show({ message: "Sign up successful! Please check your email to confirm your account." })
             }
         } else {
             const { error } = await supabase.auth.signInWithPassword({
@@ -69,11 +71,9 @@ export function AuthCard({ mode }: AuthCardProps) {
     } catch (error: any) {
         console.error("Auth Error:", error)
         if (mode === 'login' && (error.message.includes("Invalid login credentials") || error.message.includes("Email not confirmed"))) {
-             if (confirm("Login failed. If you don't have an account, click OK to sign up.")) {
-                 router.push('/signup')
-             }
+             show({ message: "Login failed. If you don't have an account, click OK to sign up.", confirmText: "Sign Up", cancelText: "Cancel", onConfirm: () => router.push('/signup') })
         } else {
-            alert(error.message)
+            show({ message: error.message })
         }
     } finally {
         setLoading(false)
