@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation"
 
 export function Navbar() {
   const [user, setUser] = useState<any>(null)
+  const [query, setQuery] = useState("")
   const supabase = createClient()
   const router = useRouter()
 
@@ -46,6 +47,14 @@ export function Navbar() {
           <input 
             type="text"
             placeholder="Search for products..."
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const q = query.trim()
+                router.push(q ? `/?q=${encodeURIComponent(q)}` : '/')
+              }
+            }}
             className="w-full h-10 pl-10 pr-4 rounded-full border border-gray-200 bg-[var(--color-pastel-bg)] focus:outline-none focus:ring-2 focus:ring-[var(--color-pastel-primary)]"
           />
         </div>

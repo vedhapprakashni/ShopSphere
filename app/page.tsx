@@ -1,17 +1,23 @@
+export const dynamic = "force-dynamic"
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams?: { q?: string } }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+  const q = (searchParams?.q || '').trim()
   
-  const { data: products } = await supabase
+  let productQuery = supabase
     .from('products')
     .select('*')
     .eq('status', 'active')
     .order('created_at', { ascending: false })
+  if (q) {
+    productQuery = productQuery.or(`title.ilike.%${q}%,description.ilike.%${q}%,location.ilike.%${q}%,category.ilike.%${q}%`)
+  }
+  const { data: products } = await productQuery
 
   let recent: any[] = []
   if (user) {
@@ -21,7 +27,7 @@ export default async function Home() {
       .eq('user_id', user.id)
       .order('viewed_at', { ascending: false })
       .limit(8)
-    recent = views || []
+    recent = (views || []).filter((rv: any) => rv?.products && rv.products.id)
   }
 
   return (
@@ -61,7 +67,7 @@ export default async function Home() {
 
       {/* Recent Listings */}
        <section id="listings" className="container mx-auto px-4 py-12">
-        <h2 className="text-2xl font-bold mb-8 text-[var(--color-pastel-text)]">Fresh Finds Near You</h2>
+        <h2 className="text-2xl font-bold mb-8 text-[var(--color-pastel-text)]">{q ? `Search results for "${q}"` : 'Fresh Finds Near You'}</h2>
         
         {products && products.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">

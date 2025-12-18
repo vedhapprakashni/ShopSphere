@@ -105,6 +105,56 @@ export default function ProductPage() {
     }
   }
 
+  const handleBuyNow = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      router.push('/login')
+      return
+    }
+    if (session.user.id === product.seller_id) {
+      show({ message: "You cannot buy your own product." })
+      return
+    }
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    try {
+      // Find or create negotiation for buyer
+      const { data: existing } = await supabase
+        .from('negotiations')
+        .select('*')
+        .eq('product_id', product.id)
+        .eq('buyer_id', session.user.id)
+        .maybeSingle()
+      let negotiation = existing
+      if (!negotiation) {
+        const { data: created } = await supabase
+          .from('negotiations')
+          .insert({
+            product_id: product.id,
+            buyer_id: session.user.id,
+            seller_id: product.seller_id,
+            pitch_price: product.price,
+            status: 'accepted',
+            final_price: product.price,
+            final_offer_expires_at: expiresAt,
+          })
+          .select()
+          .single()
+        negotiation = created
+      } else {
+        const { data: updated } = await supabase
+          .from('negotiations')
+          .update({ status: 'accepted', final_price: product.price, final_offer_expires_at: expiresAt })
+          .eq('id', negotiation.id)
+          .select()
+          .single()
+        negotiation = updated
+      }
+      router.push(`/chat?negotiation=${negotiation.id}`)
+    } catch (e) {
+      show({ message: "Failed to initiate purchase." })
+    }
+  }
+
   const handleMarkSold = async () => {
     if (!product) return
     setOwnerActionsLoading(true)
@@ -209,7 +259,7 @@ export default function ProductPage() {
                 </div>
 
                 <div className="flex gap-4">
-                    <Button size="lg" className="flex-1 text-lg h-14 rounded-xl">
+                    <Button size="lg" className="flex-1 text-lg h-14 rounded-xl" onClick={handleBuyNow}>
                         Buy Now
                     </Button>
                     <Button 
@@ -238,14 +288,19 @@ export default function ProductPage() {
 function OwnerActions({ productSellerId, loading, onMarkSold, onDelete }: { productSellerId: string, loading: boolean, onMarkSold: () => void, onDelete: () => void }) {
   const supabase = createClient()
   const [isOwner, setIsOwner] = useState(false)
+  const [mode, setMode] = useState<'buyer' | 'seller'>('buyer')
   useEffect(() => {
     const check = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       setIsOwner(!!session && session.user.id === productSellerId)
+      if (session) {
+        const { data: profile } = await supabase.from('profiles').select('mode').eq('id', session.user.id).maybeSingle()
+        if (profile?.mode) setMode(profile.mode)
+      }
     }
     check()
   }, [productSellerId])
-  if (!isOwner) return null
+  if (!isOwner || mode !== 'seller') return null
   return (
     <div className="mt-6 flex gap-3">
       <Button variant="pastelAccent" disabled={loading} onClick={onMarkSold}>Mark as Sold</Button>

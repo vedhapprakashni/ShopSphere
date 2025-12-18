@@ -132,7 +132,7 @@ create policy "Users can delete their own products." on products for delete usin
 
 create table if not exists recent_views (
   user_id uuid references profiles(id) not null,
-  product_id uuid references products(id) not null,
+  product_id uuid references products(id) on delete cascade not null,
   viewed_at timestamp with time zone default timezone('utc'::text, now()) not null,
   primary key (user_id, product_id)
 );
@@ -145,8 +145,39 @@ create or replace function public.cleanup_sold_products()
 returns void
 language sql
 as $$
-  delete from public.products
+  update public.products
+  set status = 'archived'
   where status = 'sold'
     and sold_at is not null
     and sold_at < timezone('utc'::text, now()) - interval '1 month';
 $$;
+
+alter table negotiations add column if not exists final_price numeric;
+alter table negotiations add column if not exists status text default 'pending';
+alter table negotiations add column if not exists final_offer_expires_at timestamp with time zone;
+
+create table if not exists transactions (
+  id uuid default uuid_generate_v4() primary key,
+  negotiation_id uuid references negotiations(id) not null,
+  buyer_id uuid references profiles(id) not null,
+  seller_id uuid references profiles(id) not null,
+  amount numeric not null,
+  order_id text,
+  status text default 'created',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+alter table transactions enable row level security;
+create policy "Parties can select transactions." on transactions for select using ( auth.uid() = buyer_id or auth.uid() = seller_id );
+create policy "Buyer can insert transaction." on transactions for insert with check ( auth.uid() = buyer_id );
+create policy "Seller can update transaction." on transactions for update using ( auth.uid() = seller_id or auth.uid() = buyer_id );
+
+do $$
+begin
+  if exists (
+    select 1 from information_schema.table_constraints 
+    where constraint_name = 'recent_views_product_id_fkey'
+  ) then
+    alter table recent_views drop constraint recent_views_product_id_fkey;
+    alter table recent_views add constraint recent_views_product_id_fkey foreign key (product_id) references products(id) on delete cascade;
+  end if;
+end $$;

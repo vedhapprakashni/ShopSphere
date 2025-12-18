@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Search, Send } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 import { useEffect, useState, useRef } from "react"
+import PayPalButton from "@/components/paypal-button"
 
 export default function ChatPage() {
   const [chats, setChats] = useState<any[]>([])
@@ -196,6 +197,14 @@ export default function ChatPage() {
                         <div className="bg-[var(--color-pastel-bg)] px-3 py-1 rounded-full border border-[var(--color-pastel-border)]">
                             <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Current Pitch</span>
                             <span className="ml-2 font-bold text-gray-800">${currentNegotiation.pitch_price}</span>
+                            {currentNegotiation.final_price && (
+                              <span className="ml-4 text-xs text-gray-500">Final Offer: <span className="font-bold text-gray-800">${currentNegotiation.final_price}</span></span>
+                            )}
+                            {currentNegotiation.final_offer_expires_at && (
+                              <span className="ml-4 text-xs text-gray-500">
+                                Expires {new Date(currentNegotiation.final_offer_expires_at).toLocaleString()}
+                              </span>
+                            )}
                         </div>
                     </div>
 
@@ -223,18 +232,30 @@ export default function ChatPage() {
 
                     {/* Input Area */}
                     <div className="p-4 bg-white border-t border-gray-100">
-                        <form onSubmit={handleSendMessage} className="flex gap-2">
-                            <input 
-                                type="text" 
-                                value={newMessage}
-                                onChange={(e) => setNewMessage(e.target.value)}
-                                placeholder="Type a message..." 
-                                className="flex-1 h-12 px-4 rounded-full bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-pastel-primary)]"
-                            />
-                            <Button type="submit" size="icon" className="h-12 w-12 rounded-full shadow-md">
-                                <Send className="h-5 w-5" />
-                            </Button>
-                        </form>
+                        <div className="space-y-4">
+                          {currentUser?.id === currentNegotiation.seller_id ? (
+                            <FinalOffer negotiation={currentNegotiation} onUpdated={setCurrentNegotiation} />
+                          ) : currentNegotiation.final_price && currentNegotiation.status === 'accepted' && (!currentNegotiation.final_offer_expires_at || new Date(currentNegotiation.final_offer_expires_at) > new Date()) ? (
+                            <div className="flex items-center gap-4">
+                              <div className="text-sm text-gray-600">Pay ${currentNegotiation.final_price} to complete</div>
+                              <PayPalButton amount={currentNegotiation.final_price} negotiationId={currentNegotiation.id} />
+                            </div>
+                          ) : currentNegotiation.final_price && currentNegotiation.final_offer_expires_at && new Date(currentNegotiation.final_offer_expires_at) <= new Date() ? (
+                            <div className="text-sm text-red-600">Final offer expired. Ask the seller for a new offer.</div>
+                          ) : null}
+                          <form onSubmit={handleSendMessage} className="flex gap-2">
+                              <input 
+                                  type="text" 
+                                  value={newMessage}
+                                  onChange={(e) => setNewMessage(e.target.value)}
+                                  placeholder="Type a message..." 
+                                  className="flex-1 h-12 px-4 rounded-full bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-pastel-primary)]"
+                              />
+                              <Button type="submit" size="icon" className="h-12 w-12 rounded-full shadow-md">
+                                  <Send className="h-5 w-5" />
+                              </Button>
+                          </form>
+                        </div>
                     </div>
                 </>
             ) : (
@@ -250,5 +271,37 @@ export default function ChatPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+function FinalOffer({ negotiation, onUpdated }: { negotiation: any, onUpdated: (n: any) => void }) {
+  const [price, setPrice] = useState<string>(negotiation.final_price ? String(negotiation.final_price) : '')
+  const supabase = createClient()
+  const sendOffer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const value = Number(price)
+    if (Number.isNaN(value) || value <= 0) return
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const { data, error } = await supabase
+      .from('negotiations')
+      .update({ final_price: value, status: 'accepted', final_offer_expires_at: expiresAt })
+      .eq('id', negotiation.id)
+      .select()
+      .single()
+    if (!error && data) onUpdated(data)
+  }
+  return (
+    <form onSubmit={sendOffer} className="flex gap-2">
+      <input
+        type="number"
+        min="0"
+        step="0.01"
+        value={price}
+        onChange={(e) => setPrice(e.target.value)}
+        placeholder="Set final offer..."
+        className="h-12 px-4 rounded-full bg-gray-50 border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[var(--color-pastel-primary)]"
+      />
+      <Button type="submit" className="h-12 rounded-full">Send Final Offer</Button>
+    </form>
   )
 }
