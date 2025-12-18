@@ -79,7 +79,10 @@ export default function ChatPage() {
             table: 'messages',
             filter: `negotiation_id=eq.${currentNegotiation.id}`
         }, (payload) => {
-            setMessages(prev => [...prev, payload.new])
+            setMessages(prev => {
+              if (prev.some((m) => m.id === payload.new.id)) return prev
+              return [...prev, payload.new]
+            })
         })
         .subscribe()
 
@@ -105,7 +108,7 @@ export default function ChatPage() {
         ? currentNegotiation.seller_id 
         : currentNegotiation.buyer_id
 
-    const { error } = await supabase
+    const { data: inserted, error } = await supabase
         .from('messages')
         .insert({
             negotiation_id: currentNegotiation.id,
@@ -113,8 +116,11 @@ export default function ChatPage() {
             receiver_id: receiverId,
             content: newMessage
         })
+        .select()
+        .single()
 
-    if (!error) {
+    if (!error && inserted) {
+        setMessages(prev => [...prev, inserted])
         setNewMessage("")
     }
   }
