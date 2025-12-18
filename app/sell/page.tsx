@@ -24,7 +24,6 @@ export default function SellPage() {
     setLoading(true)
 
     try {
-      // 1. Check User Session
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session) {
@@ -39,8 +38,30 @@ export default function SellPage() {
       const description = formData.get('description') as string
       const location = formData.get('location') as string
       const isNegotiable = formData.get('negotiable') === 'on'
+      const priceValue = Number(price)
+      if (!title?.trim() || Number.isNaN(priceValue) || priceValue <= 0 || !description?.trim() || !location?.trim()) {
+        alert("Please fill all fields with valid values.")
+        return
+      }
 
-      // 2. Upload Image (if exists)
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      if (!existingProfile) {
+        const { error: profileInsertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: session.user.id,
+            email: session.user.email,
+          })
+        if (profileInsertError) {
+          throw profileInsertError
+        }
+      }
+
       let imageUrl = null
       if (file) {
         const fileExt = file.name.split('.').pop()
@@ -62,13 +83,12 @@ export default function SellPage() {
         imageUrl = publicUrl
       }
 
-      // 3. Insert into Database
       const { error: insertError } = await supabase
         .from('products')
         .insert({
           seller_id: session.user.id,
           title,
-          price: parseFloat(price),
+          price: priceValue,
           description,
           location,
           is_negotiable: isNegotiable,
@@ -81,9 +101,13 @@ export default function SellPage() {
       alert("Item listed successfully!")
       router.push('/')
       
-    } catch (error) {
-      console.error('Error listing item:', error)
-      alert("Failed to list item. Please try again.")
+    } catch (error: any) {
+      const msg = typeof error?.message === 'string' ? error.message : 'Failed to list item.'
+      if (msg.toLowerCase().includes('storage bucket') || msg.toLowerCase().includes('not found') || msg.toLowerCase().includes('does not exist')) {
+        alert("Image upload failed. Please create a 'product-images' storage bucket in Supabase and try again.")
+      } else {
+        alert(msg)
+      }
     } finally {
       setLoading(false)
     }
