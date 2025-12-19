@@ -181,3 +181,25 @@ begin
     alter table recent_views add constraint recent_views_product_id_fkey foreign key (product_id) references products(id) on delete cascade;
   end if;
 end $$;
+
+create or replace function public.cleanup_recent_views_on_product_delete()
+returns trigger
+language plpgsql
+as $$
+begin
+  delete from public.recent_views where product_id = old.id;
+  return null;
+end;
+$$;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_trigger where tgname = 'on_product_deleted_cleanup_views'
+  ) then
+    drop trigger on_product_deleted_cleanup_views on public.products;
+  end if;
+  create trigger on_product_deleted_cleanup_views
+    after delete on public.products
+    for each row execute procedure public.cleanup_recent_views_on_product_delete();
+end $$;

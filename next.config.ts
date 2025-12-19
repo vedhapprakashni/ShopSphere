@@ -1,4 +1,5 @@
 const nextConfig = {
+  devIndicators: false,
   webpack(config: any, { dev }: { dev: boolean }) {
     if (dev) {
       config.devtool = false

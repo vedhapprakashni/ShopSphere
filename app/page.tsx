@@ -1,10 +1,13 @@
 export const dynamic = "force-dynamic"
+export const revalidate = 0
 import { Navbar } from "@/components/navbar"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/server"
+import { unstable_noStore as noStore } from "next/cache"
 
 export default async function Home({ searchParams }: { searchParams?: { q?: string } }) {
+  noStore()
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   const q = (searchParams?.q || '').trim()
